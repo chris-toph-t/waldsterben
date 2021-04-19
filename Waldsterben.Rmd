@@ -1,0 +1,349 @@
+---
+title: "Unsere Hainleite"
+output: 
+  html_document:
+    theme: readable
+    self-contained: TRUE
+    includes:
+      before_body: tracking.html
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE, cache=TRUE)
+
+library(librarian)
+shelf(rgdal, sf, sp, ggspatial, raster, tidyverse, tmap, rnaturalearth, hrbrthemes, leaflet, RColorBrewer, ggtext, paletteer, lib = lib_paths()[1])
+library(osmdata)
+
+color_loss <- RColorBrewer::brewer.pal(11, "RdYlGn")[2]
+color_cover <- RColorBrewer::brewer.pal(11, "RdYlGn")[7]
+color_gain <- RColorBrewer::brewer.pal(11, "RdYlGn")[11]
+
+```
+
+
+```{r get hainleite and siedlung shapes}
+q <- osmdata::opq_osm_id("2029105", type = "relation")
+hainleite <- osmdata::osmdata_sf(q) 
+hainleite <- hainleite$osm_polygons
+
+
+siedlungen <- read_sf(file.path("data", "sie01_f.shp"))
+#create 0.05 arc around hainleite shape
+hainleite_buffer <- hainleite %>%
+  st_buffer(dist = 0.05) %>%
+  st_transform(crs = st_crs(siedlungen))
+
+#filter siedlungen within hainleite buffer
+siedlungen_hainleite <- siedlungen %>% 
+  st_intersection(hainleite_buffer) %>%
+  st_simplify()
+
+#obtaining siedlung area size
+siedlungen_hainleite_area <- siedlungen_hainleite %>%
+  group_by(OBJID, NAM) %>%
+  summarise() %>%
+  ungroup() %>%
+  summarise(NAM = NAM, area = st_area(.)) %>%
+  mutate(area = units::drop_units(area/10000)) %>%
+  ungroup() 
+
+siedlungen_hainleite_labels <- siedlungen_hainleite %>%
+  group_by(NAM) %>%
+  summarise() %>%
+  ungroup() 
+
+```
+
+
+```{r}
+etrs <- "+proj=longlat +datum=WGS84 +no_defs"
+#https://data.globalforestwatch.org/datasets/tree-cover-loss-hansen-umd-google-usgs-nasa
+lossyear <- raster(file.path("data", "Hansen_GFC-2019-v1.7_lossyear_60N_010E.tif"))
+treecover <- raster(file.path("data", "Hansen_GFC-2019-v1.7_treecover2000_60N_010E.tif"))
+gain <- raster(file.path("data", "Hansen_GFC-2019-v1.7_gain_60N_010E.tif"))
+
+#keep only forest raster within hainleite bounding box
+loss_hainleite <- crop(lossyear, hainleite)
+treecover_hainleite <- crop(treecover, hainleite)
+gain_hainleite <- crop(gain, hainleite)
+
+#set all 0 values to NA
+loss_hainleite[loss_hainleite==0] <- NA
+treecover_hainleite[treecover_hainleite==0] <- NA
+gain_hainleite[gain_hainleite==0] <- NA
+
+# make explicit year labels
+loss_hainleite <- setValues(loss_hainleite, values = values(loss_hainleite)+2000)
+
+#convert to polygon
+loss_hainleite_sf <- rasterToPolygons(loss_hainleite) 
+treecover_hainleite_sf <- rasterToPolygons(treecover_hainleite)
+gain_hainleite_sf <- rasterToPolygons(gain_hainleite)
+
+```
+
+```{r keep only hainleite shape}
+
+#keep only true shape of hainleite
+loss_hainleite_sf <- loss_hainleite_sf %>%
+  st_as_sf() %>%
+  st_intersection(hainleite) %>%
+  select(Hansen_GFC.2019.v1.7_lossyear_60N_010E)
+
+gain_hainleite_sf <- gain_hainleite_sf %>%
+  st_as_sf() %>%
+  st_intersection(hainleite) %>%
+  select(Hansen_GFC.2019.v1.7_gain_60N_010E, geometry) 
+
+```
+
+
+```{r summarise}
+
+#summarise loss squares into larger groups
+loss_hainleite_sf_sum <- loss_hainleite_sf %>%
+  group_by(Hansen_GFC.2019.v1.7_lossyear_60N_010E) %>% 
+  summarise() 
+
+gain_hainleite_sf_sum <- gain_hainleite_sf %>%
+  group_by(Hansen_GFC.2019.v1.7_gain_60N_010E) %>% 
+  summarise() 
+
+
+loss_sizes <- loss_hainleite_sf_sum %>%
+  summarise(year = Hansen_GFC.2019.v1.7_lossyear_60N_010E, area = units::drop_units(st_area(.))) %>%
+  mutate(area = area/10000) %>%
+  st_drop_geometry() 
+
+
+gain_sizes <- gain_hainleite_sf_sum %>%
+  summarise(year = Hansen_GFC.2019.v1.7_gain_60N_010E, area = units::drop_units(st_area(.))) %>%
+  mutate(area = area/10000) %>%
+  st_drop_geometry()
+
+```
+
+
+```{r heavycomputing stuff, eval=FALSE}
+treecover_hainleite_sf <- treecover_hainleite_sf %>%
+  st_as_sf() %>%
+  st_intersection(hainleite)
+
+treecover_hainleite_sf %>%
+  select(Hansen_GFC.2019.v1.7_treecover2000_60N_010E, geometry) %>% 
+  summarise(treecover = round(Hansen_GFC.2019.v1.7_treecover2000_60N_010E, digits = -1)) -> treecover_hainleite_sf_round
+
+treecover_hainleite_sf_round %>%
+  ungroup() %>%
+  group_by(treecover) %>%
+  summarise() -> treecover_hainleite_sf_sum
+
+
+gain_hainleite_sf <- gain_hainleite_sf %>%
+  st_as_sf() %>%
+  st_intersection(hainleite)
+
+```
+
+
+
+
+
+```{r vergleichsflaechen}
+
+gebauede <- read_sf(file.path("..", "000_MasterData", "HU-TH", "gebaeude-th.shp")) %>%
+  st_set_crs(4647) %>%
+  st_intersection(st_transform(hainleite_buffer, crs = 4647))
+
+make_comparison <- function(focus_village = NA) {
+
+  gebaeude_focus <- gebauede %>%
+    st_intersection(st_transform(filter(siedlungen_hainleite_labels, NAM == focus_village), crs = 4647)) %>%
+    st_simplify()
+
+  ggplot() +
+    geom_sf(data = filter(siedlungen_hainleite_labels, NAM == focus_village), fill = "grey60", lwd = 0) +
+    geom_sf(data = gebaeude_focus, fill = "grey20", lwd = 0) +
+    labs(title = paste0(focus_village, ": ", round(filter(siedlungen_hainleite_area, NAM == focus_village)$area, digits = 1), " Hektar")) +
+    theme_void()
+
+}
+
+```
+
+# Wie unser Wald stirbt
+
+Man geht durch den Wald und merkt: es tut sich was. Kahle Fächen, ehemalige Waldhütten sind jetzt auf dem Felde. Wie viel Hainleite haben wir eigentlich schon verloren?
+
+Diese Seite liefert Antworten darauf. Mit Hilfe von Satelliten-gestützten Rechenverfahren von [Global Forest Watch](globalforestwatch.org/) zeigen wir klar und deutlich, dass es höchste Zeit ist, etwas zu tun. 
+
+
+## Verlorene Hektar Wald pro Jahr
+
+Um 2005 gab es bereits harte Jahre für die Hainleite - aber nichts hat 2019 übertroffen. Satte 73 Hektar Bäume gingen 2019 verloren. Diese Zahl kommt zustande, wenn man aus dem All die Baumdichte beobachtet. Solche Beobachten von Satelliten sind genau - erklären aber nicht, warum diese Bäume nicht mehr stehen. 
+
+
+```{r lossyears}
+ggplot(data = loss_sizes) +
+  geom_bar(aes(x = year, y = area), stat = "identity", fill = color_loss) +
+  theme_ipsum() +
+  labs(title = "So viele Hektar Wald verlieren wir jedes Jahr", x = "Jahr", y = "Hektar", caption = "Quelle: Global Forest Watch")
+```
+
+
+Zum Vergleich: von 2000 bis 2019 sind so viele Hektar Bäume dazgekommen. Das ist etwa ein Zehntel des Verlusts. 
+
+
+```{r gainversusloss}
+loss_sizes %>%
+  summarise(area = sum(area)) %>%
+  ggplot() +
+    geom_bar(aes(x = "Verlust seit 2000", y = area), stat = "identity", fill = color_loss) +
+    geom_bar(data = gain_sizes, aes(x = "Zuwachs seit 2000", y = area), stat = "identity", fill = color_gain) +
+    labs(title = paste0("<span style='color:", 
+                        color_loss, 
+                        ";'>Baumflächen verloren</span> gegen <span style='color:",
+                        color_gain,
+                        ";'>neue Baumflächen</span> seit 2000"), x = "Jahr", y = "Hektar", caption = "Quelle: Global Forest Watch") +
+    theme_ipsum() +
+    theme(
+    plot.title = element_markdown()
+  )
+```
+
+## Wo genau verlieren wir die Hainleite?
+
+```{r out.width='100%'}
+# plot overall loss
+overall_map <- ggplot() +
+  geom_sf(data = hainleite, lwd = 0, fill = color_cover) +
+  geom_sf(data = loss_hainleite_sf_sum, lwd = 0, fill = color_loss) +
+  geom_sf(data = siedlungen_hainleite_area, fill = "grey80", lwd = 0) +
+  geom_sf_text(data = siedlungen_hainleite_labels, 
+               aes(label = NAM, geometry = geometry), color = "grey50", 
+               size = 2.5, check_overlap = TRUE, nudge_x = 0.005, nudge_y = 0.005) +
+  #labs(title = paste0(round(sum(loss_sizes$area), digits = 1), " Hektar Hainleite verloren</a>")) +
+  labs(title = paste0("Wir haben von 2000 bis 2019 <span style='color:", 
+                      color_loss, 
+                      ";'>", 
+                      round(sum(loss_sizes$area), digits = 1), 
+                      " Hektar Hainleite verloren</span>"), caption = "Quellen: GFW, Geoportal Thüringen") +
+  theme_void() +
+  theme(
+    plot.title = element_markdown()
+  )
+
+overall_map
+```
+
+Vielleicht können Sie sich 273 Hektar Wald schwer vorstellen. Wir auch kaum. Also haben wir hier ein paar Vergleiche herausgesucht. **273 Hektar Wald sind so viel wie die Siedlungsfläche von Oldisleben, Kindelbrück und Bendeleben zusammen:**
+
+```{r out.width=c('33%', '33%', '33%'), fig.show='hold'}
+make_comparison(focus_village = "Oldisleben")
+make_comparison(focus_village = "Kindelbrück")
+make_comparison(focus_village = "Bendeleben")
+```
+
+Allein 2019 sind Bäume in diesen Gegenden verschwunden:
+
+```{r out.width='100%'}
+# plot only 2019 loss
+ggplot() +
+  geom_sf(data = hainleite, lwd = 0, fill = color_cover) +
+  geom_sf(data = filter(loss_hainleite_sf_sum, Hansen_GFC.2019.v1.7_lossyear_60N_010E == 2019), lwd = 0, fill = color_loss) +
+  geom_sf(data = siedlungen_hainleite_area, fill = "grey80", lwd = 0) +
+  geom_sf_text(data = siedlungen_hainleite_labels, 
+               aes(label = NAM, geometry = geometry), color = "grey50", 
+               size = 3, check_overlap = TRUE, nudge_x = 0.005, nudge_y = 0.005) +
+  labs(title = paste0("2019 haben wir <span style='color:", 
+                      color_loss, 
+                      ";'>", 
+                      round(max(loss_sizes$area), digits = 1), 
+                      " Hektar Hainleite verloren</span>"), caption = "Quellen: GFW, Geoportal Thüringen") +
+  theme_void() +
+      theme(
+    plot.title = element_markdown()
+  )
+```
+
+Zum Vergleich: alle roten Flächen zusammen sind etwa so groß wie Schernberg. Wir haben 2019 also so viele Hektar Bäume verloren, wie Schernberg groß ist.   
+
+
+```{r out.width=c('100%')}
+make_comparison(focus_village = "Schernberg")
+```
+
+## Entdecke wie der Wald vor deiner Haustür verschwindet
+
+Mit dieser interaktiven Karte kannst du hineinzoomen und schauen, wie Waldfächen vor deiner Haustür verschwunden sind. 
+
+```{r make interactive maps, out.width='100%'}
+
+pal_cover <- colorNumeric("Greens", domain = values(treecover_hainleite), na.color = "transparent")
+
+pal_loss <- colorNumeric("Reds", domain = values(loss_hainleite), na.color = "transparent")
+
+
+m <- leaflet(elementId = "forestmap") %>% setView(lat = 51.3289, lng = 10.9266, zoom = 11) %>%
+      addProviderTiles(providers$CartoDB.Positron, group = "Default") %>%
+      #addProviderTiles(providers$Esri.WorldImagery, group = "Satellite", options = providerTileOptions(opacity = 1)) %>%
+      #addProviderTiles(providers$OpenStreetMap.HOT, group = "HOTOSM", options = providerTileOptions(opacity = 1)) %>%
+
+addLayersControl(
+    overlayGroups = c("Baumbedeckung", "Verlorene Baumbedeckung"),
+    options = layersControlOptions(collapsed = FALSE)
+  ) 
+
+m %>% 
+  #addTiles() %>%
+  addRasterImage(treecover_hainleite, colors = pal_cover, opacity = 0.8, group = "Baumbedeckung") %>%
+   addLegend(pal = pal_cover, values = values(treecover_hainleite),
+    title = "Baumbedeckung in %") %>%
+  addRasterImage(loss_hainleite, colors = pal_loss, opacity = 1, group = "Verlorene Baumbedeckung") %>%
+  addLegend(pal = pal_loss, values = values(loss_hainleite),
+    title = "Verlorene Baumflächen nach Jahren", labFormat = labelFormat(big.mark = ""))
+
+```
+
+
+
+```{r eval=FALSE}
+
+all_animation <-  ggplot() +
+  geom_sf(data = hainleite, lwd = 0, fill = RColorBrewer::brewer.pal(11, "RdYlGn")[9]) +
+  geom_sf(data = loss_hainleite_sf_sum, lwd = 0, fill = RColorBrewer::brewer.pal(11, "RdYlGn")[2]) +          
+  transition_states(Hansen_GFC.2019.v1.7_lossyear_60N_010E,
+                    transition_length = 2,
+                    state_length = 1) +
+  geom_sf(data = siedlungen_hainleite_area, fill = "grey80", lwd = 0) +
+  geom_sf_text(data = siedlungen_hainleite_labels, 
+               aes(label = NAM, geometry = geometry), color = "grey50", 
+               size = 2.5, check_overlap = TRUE, nudge_x = 0.005, nudge_y = 0.005) +
+  labs(title = paste0("Von 2000 bis 2019 haben wir ",round(sum(loss_sizes$area), digits = 1), " Hektar Hainleite verloren")) +
+  theme_void() +
+  ggtitle('Jahr {Hansen_GFC.2019.v1.7_lossyear_60N_010E}',
+          subtitle = 'Frame {frame} of {nframes}')
+
+animate(all_animation, nframes = 20)
+
+ 
+
+```
+
+## FAQ
+
+### Wer steckt dahinter?
+
+[Christoph](https://chris.toph.eu), freiberuflicher Datenanalyst aus der Region. 
+
+### Woher stammen die Daten? 
+
+* Die Wald-Daten kommen von Global Forest Watch und können [hier](https://www.globalforestwatch.org/map/) eingesehen und [hier](https://data.globalforestwatch.org/datasets/14228e6347c44f5691572169e9e107ad) heruntergeladen werden. 
+* Die Größen von Siedlungen kommen vom [Geoportal Thüringen](https://www.geoportal-th.de/de-de/Downloadbereiche/Download-Offene-Geodaten-Th%C3%BCringen)
+
+### Wie kann ich das selbst machen? 
+
+Der Quellcode ist [hier auf Github veröffentlicht](https://github.com/chris-toph-t/waldsterben). 
+
+
