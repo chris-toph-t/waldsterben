@@ -1,11 +1,10 @@
 .Rproj.user
-.Rproj
+*.Rproj
 .Rhistory
 .RData
 .Ruserdata
 rosm.cache/
 data/
-*.png
 tracking.html
 Waldsterben_cache/
 Waldsterben_files

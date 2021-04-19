@@ -172,8 +172,6 @@ make_comparison <- function(focus_village = NA) {
 
 ```
 
-# Wie unser Wald stirbt
-
 Man geht durch den Wald und merkt: es tut sich was. Kahle Fächen, ehemalige Waldhütten sind jetzt auf dem Felde. Wie viel Hainleite haben wir eigentlich schon verloren?
 
 Diese Seite liefert Antworten darauf. Mit Hilfe von Satelliten-gestützten Rechenverfahren von [Global Forest Watch](globalforestwatch.org/) zeigen wir klar und deutlich, dass es höchste Zeit ist, etwas zu tun. 
@@ -181,7 +179,7 @@ Diese Seite liefert Antworten darauf. Mit Hilfe von Satelliten-gestützten Reche
 
 ## Verlorene Hektar Wald pro Jahr
 
-Um 2005 gab es bereits harte Jahre für die Hainleite - aber nichts hat 2019 übertroffen. Satte 73 Hektar Bäume gingen 2019 verloren. Diese Zahl kommt zustande, wenn man aus dem All die Baumdichte beobachtet. Solche Beobachten von Satelliten sind genau - erklären aber nicht, warum diese Bäume nicht mehr stehen. 
+Um 2005 gab es bereits harte Jahre für die Hainleite - aber nichts hat 2019 übertroffen. Satte 73 Hektar Bäume gingen 2019 verloren. Diese Zahl kommt zustande, wenn man aus dem All die Baumdichte beobachtet. Solche Beobachtungen von Satelliten sind genau - erklären aber nicht, warum diese Bäume nicht mehr stehen. 
 
 
 ```{r lossyears}
@@ -237,7 +235,7 @@ overall_map <- ggplot() +
 overall_map
 ```
 
-Vielleicht können Sie sich 273 Hektar Wald schwer vorstellen. Wir auch kaum. Also haben wir hier ein paar Vergleiche herausgesucht. **273 Hektar Wald sind so viel wie die Siedlungsfläche von Oldisleben, Kindelbrück und Bendeleben zusammen:**
+Vielleicht kannst du dir 273 Hektar Wald schwer vorstellen. Wir auch kaum. Also haben wir hier ein paar Vergleiche herausgesucht. 273 Hektar Wald sind so viel wie die **Siedlungsfläche von Oldisleben, Kindelbrück und Bendeleben zusammen:**
 
 ```{r out.width=c('33%', '33%', '33%'), fig.show='hold'}
 make_comparison(focus_village = "Oldisleben")
@@ -245,7 +243,7 @@ make_comparison(focus_village = "Kindelbrück")
 make_comparison(focus_village = "Bendeleben")
 ```
 
-Allein 2019 sind Bäume in diesen Gegenden verschwunden:
+Das fatale Jahr 2019 nehmen wir noch einmal genauer in den Blick:
 
 ```{r out.width='100%'}
 # plot only 2019 loss
@@ -276,7 +274,7 @@ make_comparison(focus_village = "Schernberg")
 
 ## Entdecke wie der Wald vor deiner Haustür verschwindet
 
-Mit dieser interaktiven Karte kannst du hineinzoomen und schauen, wie Waldfächen vor deiner Haustür verschwunden sind. 
+Mit dieser interaktiven Karte kannst du hineinzoomen und schauen, wie Waldfächen in deiner Gegend verschwunden sind. Oder schau einfach in den Wald hinein. 
 
 ```{r make interactive maps, out.width='100%'}
 
