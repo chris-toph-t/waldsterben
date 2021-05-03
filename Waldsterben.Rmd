@@ -4,6 +4,8 @@ output:
   html_document:
     theme: readable
     self-contained: TRUE
+    toc: true
+    toc_float: true
     includes:
       before_body: tracking.html
 ---
@@ -22,10 +24,25 @@ color_gain <- RColorBrewer::brewer.pal(11, "RdYlGn")[11]
 ```
 
 
+```{r getadminboundaries}
+library(giscoR)
+nuts3 <- gisco_get_nuts(
+  year = "2016",
+  epsg = "3035",
+  resolution = "3",
+  nuts_level = "3"
+) %>% 
+  filter(NUTS_ID == "DEG0A")
+
+
+
+```
+
+
 ```{r get hainleite and siedlung shapes}
 q <- osmdata::opq_osm_id("2029105", type = "relation")
 hainleite <- osmdata::osmdata_sf(q) 
-hainleite <- hainleite$osm_polygons
+hainleite <- hainleite$osm_multipolygons
 
 
 siedlungen <- read_sf(file.path("data", "sie01_f.shp"))
@@ -56,7 +73,7 @@ siedlungen_hainleite_labels <- siedlungen_hainleite %>%
 ```
 
 
-```{r}
+```{r getGFW, eval=FALSE}
 etrs <- "+proj=longlat +datum=WGS84 +no_defs"
 #https://data.globalforestwatch.org/datasets/tree-cover-loss-hansen-umd-google-usgs-nasa
 lossyear <- raster(file.path("data", "Hansen_GFC-2019-v1.7_lossyear_60N_010E.tif"))
@@ -83,7 +100,10 @@ gain_hainleite_sf <- rasterToPolygons(gain_hainleite)
 
 ```
 
-```{r keep only hainleite shape}
+```{r keep only hainleite shape for GFW, eval=FALSE}
+hainleite <- hainleite %>%
+  st_make_valid()
+
 
 #keep only true shape of hainleite
 loss_hainleite_sf <- loss_hainleite_sf %>%
@@ -99,7 +119,7 @@ gain_hainleite_sf <- gain_hainleite_sf %>%
 ```
 
 
-```{r summarise}
+```{r summarise GFW, eval=FALSE}
 
 #summarise loss squares into larger groups
 loss_hainleite_sf_sum <- loss_hainleite_sf %>%
@@ -148,6 +168,55 @@ gain_hainleite_sf <- gain_hainleite_sf %>%
 
 
 
+```{r waldschadeflaechen}
+
+# metadata of waldschadflaechen a la Sergej Chmara http://www.geoproxy.geoportal-th.de/geoclient/metadata.jsp?MURL=https%3A//sdi.geoportal-th.de/SDIProCSW/Service.svc/get%3FREQUEST%3DGetRecordById%26SERVICE%3DCSW%26VERSION%3D2.0.2%26Elementsetname%3Dfull%26outputSchema%3Dhttp%3A//www.isotc211.org/2005/gmd%26ID%3De2acab5e-325d-4c3d-b3ab-1938f697bf3a
+
+#Layer enthält Waldflächen, die in Folge der Extremwetterereignisse und nachfolgender Schädlingsbefall im Zeitraum 1.7.2018 bis 01.08.2020 abgestorben oder bereits geräumt sind. Diese Flächen müssen wieder bewaldet und von Wildverbis geschützt werden. Enthalten sind Schadflächen unabhängig von Baumart und Schadensursache (Borkenkäfer bei Fichte und Lärche, Trockenschäden bei Buche, Eschentriebsterben, Diplodia-Pilzbefall bei Kiefer, Eichen-Frassschäden u.v.a.m) Die Daten sind aus der Auswertung der Satellitenbilder der Senthinel-Mission entstanden.
+
+# get shapes from here http://www.geoproxy.geoportal-th.de/download-service/opendata/forst/WALDSCHAEDEN.zip
+
+schadflaechen <- read_sf("WALDSCHAEDEN.shp")%>%
+  sf::st_transform(crs = st_crs(hainleite))
+
+schadflaechen_kyf <- schadflaechen %>%
+  st_simplify() %>%
+  st_intersection(st_buffer(hainleite, dist = 0.01))
+
+```
+
+```{r summarise schadflaechen}
+
+area_schaden <- schadflaechen_kyf %>%
+  group_by() %>%
+  summarise(area = (st_area(.))) %>%
+  mutate(area = area) %>%
+  st_drop_geometry() %>%
+  summarise(area = sum(area)/10000) %>%
+  units::drop_units()
+
+area_hainleite <- hainleite %>%
+  summarise(area = (st_area(.))) %>%
+  mutate(area = area) %>%
+  st_drop_geometry() %>%
+  summarise(area = sum(area)/10000) %>%
+  units::drop_units()
+
+
+  ggplot() +
+    geom_bar(data = area_schaden, aes(x = "Schadflächen 2018-2020", y = area), stat = "identity", fill = color_loss) +
+    geom_bar(data = area_hainleite, aes(x = "Gesamtfläche Hainleite", y = area), stat = "identity", fill = color_gain) +
+    labs(title = paste0("<span style='color:", 
+                        color_loss, 
+                        ";'>Schadflächen</span> im Vergleich zur <span style='color:",
+                        color_gain,
+                        ";'>gesamten Hainleite</span>"), x = "", y = "Hektar", caption = "Quelle: Global Forest Watch") +
+    theme_ipsum() +
+    theme(
+    plot.title = element_markdown()
+  )
+```
+
 
 
 ```{r vergleichsflaechen}
@@ -171,6 +240,8 @@ make_comparison <- function(focus_village = NA) {
 }
 
 ```
+
+
 
 Man geht durch den Wald und merkt: es tut sich was. Kahle Fächen, ehemalige Waldhütten sind jetzt auf dem Felde. Wie viel Hainleite haben wir eigentlich schon verloren?
 
@@ -216,17 +287,18 @@ loss_sizes %>%
 # plot overall loss
 overall_map <- ggplot() +
   geom_sf(data = hainleite, lwd = 0, fill = color_cover) +
-  geom_sf(data = loss_hainleite_sf_sum, lwd = 0, fill = color_loss) +
+  #geom_sf(data = loss_hainleite_sf_sum, lwd = 0, fill = color_loss) +
+  geom_sf(data = schadflaechen_kyf, lwd = 0, fill = color_loss) +
   geom_sf(data = siedlungen_hainleite_area, fill = "grey80", lwd = 0) +
   geom_sf_text(data = siedlungen_hainleite_labels, 
                aes(label = NAM, geometry = geometry), color = "grey50", 
                size = 2.5, check_overlap = TRUE, nudge_x = 0.005, nudge_y = 0.005) +
   #labs(title = paste0(round(sum(loss_sizes$area), digits = 1), " Hektar Hainleite verloren</a>")) +
-  labs(title = paste0("Wir haben von 2000 bis 2019 <span style='color:", 
+  labs(title = paste0("2018 bis Mitte 2020 sind <span style='color:", 
                       color_loss, 
                       ";'>", 
-                      round(sum(loss_sizes$area), digits = 1), 
-                      " Hektar Hainleite verloren</span>"), caption = "Quellen: GFW, Geoportal Thüringen") +
+                      round(sum(area_schaden$area), digits = 1), 
+                      " Hektar Hainleite zu Schaden gekommen</span>"), caption = "Quellen: Forst und Geoportal Thüringen") +
   theme_void() +
   theme(
     plot.title = element_markdown()
@@ -235,12 +307,12 @@ overall_map <- ggplot() +
 overall_map
 ```
 
-Vielleicht kannst du dir 273 Hektar Wald schwer vorstellen. Wir auch kaum. Also haben wir hier ein paar Vergleiche herausgesucht. 273 Hektar Wald sind so viel wie die **Siedlungsfläche von Oldisleben, Kindelbrück und Bendeleben zusammen:**
+Vielleicht kannst du dir 505 Hektar Wald schwer vorstellen. Wir auch kaum. Also haben wir hier ein paar Vergleiche herausgesucht. 505 Hektar Wald sind so viel wie die **Siedlungsfläche von Bad Frankenhausen, Oldisleben und Heldrungen zusammen:**
 
 ```{r out.width=c('33%', '33%', '33%'), fig.show='hold'}
+make_comparison(focus_village = "Bad Frankenhausen")
 make_comparison(focus_village = "Oldisleben")
-make_comparison(focus_village = "Kindelbrück")
-make_comparison(focus_village = "Bendeleben")
+make_comparison(focus_village = "Heldrungen")
 ```
 
 Das fatale Jahr 2019 nehmen wir noch einmal genauer in den Blick:
