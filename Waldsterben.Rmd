@@ -24,20 +24,6 @@ color_gain <- RColorBrewer::brewer.pal(11, "RdYlGn")[11]
 ```
 
 
-```{r getadminboundaries}
-library(giscoR)
-nuts3 <- gisco_get_nuts(
-  year = "2016",
-  epsg = "3035",
-  resolution = "3",
-  nuts_level = "3"
-) %>% 
-  filter(NUTS_ID == "DEG0A")
-
-
-
-```
-
 
 ```{r get hainleite and siedlung shapes}
 q <- osmdata::opq_osm_id("2029105", type = "relation")
@@ -73,7 +59,7 @@ siedlungen_hainleite_labels <- siedlungen_hainleite %>%
 ```
 
 
-```{r getGFW, eval=FALSE}
+```{r getGFW, eval=TRUE}
 etrs <- "+proj=longlat +datum=WGS84 +no_defs"
 #https://data.globalforestwatch.org/datasets/tree-cover-loss-hansen-umd-google-usgs-nasa
 lossyear <- raster(file.path("data", "Hansen_GFC-2019-v1.7_lossyear_60N_010E.tif"))
@@ -100,7 +86,7 @@ gain_hainleite_sf <- rasterToPolygons(gain_hainleite)
 
 ```
 
-```{r keep only hainleite shape for GFW, eval=FALSE}
+```{r keep only hainleite shape for GFW, eval=TRUE}
 hainleite <- hainleite %>%
   st_make_valid()
 
@@ -119,7 +105,7 @@ gain_hainleite_sf <- gain_hainleite_sf %>%
 ```
 
 
-```{r summarise GFW, eval=FALSE}
+```{r summarise GFW, eval=TRUE}
 
 #summarise loss squares into larger groups
 loss_hainleite_sf_sum <- loss_hainleite_sf %>%
@@ -202,19 +188,6 @@ area_hainleite <- hainleite %>%
   summarise(area = sum(area)/10000) %>%
   units::drop_units()
 
-
-  ggplot() +
-    geom_bar(data = area_schaden, aes(x = "Schadflächen 2018-2020", y = area), stat = "identity", fill = color_loss) +
-    geom_bar(data = area_hainleite, aes(x = "Gesamtfläche Hainleite", y = area), stat = "identity", fill = color_gain) +
-    labs(title = paste0("<span style='color:", 
-                        color_loss, 
-                        ";'>Schadflächen</span> im Vergleich zur <span style='color:",
-                        color_gain,
-                        ";'>gesamten Hainleite</span>"), x = "", y = "Hektar", caption = "Quelle: Global Forest Watch") +
-    theme_ipsum() +
-    theme(
-    plot.title = element_markdown()
-  )
 ```
 
 
@@ -235,7 +208,8 @@ make_comparison <- function(focus_village = NA) {
     geom_sf(data = filter(siedlungen_hainleite_labels, NAM == focus_village), fill = "grey60", lwd = 0) +
     geom_sf(data = gebaeude_focus, fill = "grey20", lwd = 0) +
     labs(title = paste0(focus_village, ": ", round(filter(siedlungen_hainleite_area, NAM == focus_village)$area, digits = 1), " Hektar")) +
-    theme_void()
+    theme_void() +
+    theme(plot.title = element_text(size = 22))
 
 }
 
@@ -245,26 +219,41 @@ make_comparison <- function(focus_village = NA) {
 
 Man geht durch den Wald und merkt: es tut sich was. Kahle Fächen, ehemalige Waldhütten sind jetzt auf dem Felde. Wie viel Hainleite haben wir eigentlich schon verloren?
 
-Diese Seite liefert Antworten darauf. Mit Hilfe von Satelliten-gestützten Rechenverfahren von [Global Forest Watch](globalforestwatch.org/) zeigen wir klar und deutlich, dass es höchste Zeit ist, etwas zu tun. 
+Diese Seite liefert Antworten darauf. Thüringen Forst veröffentlicht Waldschadflächen und wir haben diese Daten leicht verständlich für die Hainleite dargestellt. 
 
 
-## Verlorene Hektar Wald pro Jahr
 
-Um 2005 gab es bereits harte Jahre für die Hainleite - aber nichts hat 2019 übertroffen. Satte 73 Hektar Bäume gingen 2019 verloren. Diese Zahl kommt zustande, wenn man aus dem All die Baumdichte beobachtet. Solche Beobachtungen von Satelliten sind genau - erklären aber nicht, warum diese Bäume nicht mehr stehen. 
-
-
-```{r lossyears}
+```{r lossyears, eval=FALSE}
 ggplot(data = loss_sizes) +
   geom_bar(aes(x = year, y = area), stat = "identity", fill = color_loss) +
   theme_ipsum() +
   labs(title = "So viele Hektar Wald verlieren wir jedes Jahr", x = "Jahr", y = "Hektar", caption = "Quelle: Global Forest Watch")
 ```
 
+## Schadhafte Hainleite
 
-Zum Vergleich: von 2000 bis 2019 sind so viele Hektar Bäume dazgekommen. Das ist etwa ein Zehntel des Verlusts. 
+4.7 Prozent klingt wenig. So viel Waldfläche der Hainleite ist vom Forst als schadhaft befunden. Das entspricht 505 Hektar Wald.
 
 
-```{r gainversusloss}
+```{r hainleite and schaden size}
+ggplot() +
+  geom_bar(data = area_schaden, aes(x = "Schadflächen 2018-2020", y = area), stat = "identity", fill = color_loss) +
+  geom_bar(data = area_hainleite, aes(x = "Gesamtfläche Hainleite", y = area), stat = "identity", fill = color_gain) +
+  labs(title = paste0("<span style='color:", 
+                      color_loss, 
+                      ";'>4.7% Schadflächen</span> im Vergleich zur <span style='color:",
+                      color_gain,
+                      ";'>gesamten Hainleite</span>"), x = "", y = "Hektar", caption = "Quelle: Thüringen Forst") +
+  theme_ipsum() +
+  theme(
+  plot.title = element_markdown()
+)
+```
+
+
+```{r gainversusloss, eval=FALSE}
+#Zum Vergleich: von 2000 bis 2019 sind so viele Hektar Bäume dazgekommen. Das ist etwa ein Zehntel des Verlusts. 
+
 loss_sizes %>%
   summarise(area = sum(area)) %>%
   ggplot() +
@@ -274,7 +263,7 @@ loss_sizes %>%
                         color_loss, 
                         ";'>Baumflächen verloren</span> gegen <span style='color:",
                         color_gain,
-                        ";'>neue Baumflächen</span> seit 2000"), x = "Jahr", y = "Hektar", caption = "Quelle: Global Forest Watch") +
+                        ";'>neue Baumflächen</span> seit 2000"), x = "Jahr", y = "Hektar", caption = "Quelle: Thüringen Forst") +
     theme_ipsum() +
     theme(
     plot.title = element_markdown()
@@ -298,7 +287,7 @@ overall_map <- ggplot() +
                       color_loss, 
                       ";'>", 
                       round(sum(area_schaden$area), digits = 1), 
-                      " Hektar Hainleite zu Schaden gekommen</span>"), caption = "Quellen: Forst und Geoportal Thüringen") +
+                      " Hektar Hainleite zu Schaden gekommen</span>"), caption = "Quellen: Thüringen Forst und Geoportal") +
   theme_void() +
   theme(
     plot.title = element_markdown()
@@ -315,9 +304,9 @@ make_comparison(focus_village = "Oldisleben")
 make_comparison(focus_village = "Heldrungen")
 ```
 
-Das fatale Jahr 2019 nehmen wir noch einmal genauer in den Blick:
 
-```{r out.width='100%'}
+```{r out.width='100%', eval=FALSE}
+#Das fatale Jahr 2019 nehmen wir noch einmal genauer in den Blick:
 # plot only 2019 loss
 ggplot() +
   geom_sf(data = hainleite, lwd = 0, fill = color_cover) +
@@ -337,22 +326,22 @@ ggplot() +
   )
 ```
 
-Zum Vergleich: alle roten Flächen zusammen sind etwa so groß wie Schernberg. Wir haben 2019 also so viele Hektar Bäume verloren, wie Schernberg groß ist.   
 
-
-```{r out.width=c('100%')}
+```{r out.width=c('100%'), eval=FALSE}
+#Zum Vergleich: alle roten Flächen zusammen sind etwa so groß wie Schernberg. Wir haben 2019 also so viele Hektar Bäume verloren, wie Schernberg groß ist.  
 make_comparison(focus_village = "Schernberg")
 ```
 
-## Entdecke wie der Wald vor deiner Haustür verschwindet
+## Entdecke Waldschäden vor deiner Haustür
 
-Mit dieser interaktiven Karte kannst du hineinzoomen und schauen, wie Waldfächen in deiner Gegend verschwunden sind. Oder schau einfach in den Wald hinein. 
+
+Mit dieser interaktiven Karte kannst du hineinzoomen und schauen, wo genau in deiner Gegend die Hainleite Schäden leidet. Ein Blick in den Wald zeigt das Problem natürlich noch besser. 
 
 ```{r make interactive maps, out.width='100%'}
 
 pal_cover <- colorNumeric("Greens", domain = values(treecover_hainleite), na.color = "transparent")
 
-pal_loss <- colorNumeric("Reds", domain = values(loss_hainleite), na.color = "transparent")
+#pal_loss <- colorNumeric("Reds", domain = values(schadflaechen_kyf), na.color = "transparent")
 
 
 m <- leaflet(elementId = "forestmap") %>% setView(lat = 51.3289, lng = 10.9266, zoom = 11) %>%
@@ -361,18 +350,17 @@ m <- leaflet(elementId = "forestmap") %>% setView(lat = 51.3289, lng = 10.9266, 
       #addProviderTiles(providers$OpenStreetMap.HOT, group = "HOTOSM", options = providerTileOptions(opacity = 1)) %>%
 
 addLayersControl(
-    overlayGroups = c("Baumbedeckung", "Verlorene Baumbedeckung"),
+    overlayGroups = c("Baumbedeckung", "Schadflächen"),
     options = layersControlOptions(collapsed = FALSE)
   ) 
 
 m %>% 
-  #addTiles() %>%
-  addRasterImage(treecover_hainleite, colors = pal_cover, opacity = 0.8, group = "Baumbedeckung") %>%
-   addLegend(pal = pal_cover, values = values(treecover_hainleite),
-    title = "Baumbedeckung in %") %>%
-  addRasterImage(loss_hainleite, colors = pal_loss, opacity = 1, group = "Verlorene Baumbedeckung") %>%
-  addLegend(pal = pal_loss, values = values(loss_hainleite),
-    title = "Verlorene Baumflächen nach Jahren", labFormat = labelFormat(big.mark = ""))
+  addPolygons(data = schadflaechen_kyf, group = "Schadflächen", stroke = FALSE, fillOpacity = 1, fillColor = color_loss) %>%
+  addRasterImage(treecover_hainleite, colors = pal_cover, opacity = 0.8, group = "Baumbedeckung") 
+  #addLegend(pal = pal_cover, values = values(treecover_hainleite),
+  #  title = "Baumbedeckung in %") 
+  # addLegend(pal = pal_loss, values = values(schadflaechen_kyf),
+  #   title = "Verlorene Baumflächen nach Jahren", labFormat = labelFormat(big.mark = ""))
 
 ```
 
@@ -409,8 +397,12 @@ animate(all_animation, nframes = 20)
 
 ### Woher stammen die Daten? 
 
-* Die Wald-Daten kommen von Global Forest Watch und können [hier](https://www.globalforestwatch.org/map/) eingesehen und [hier](https://data.globalforestwatch.org/datasets/14228e6347c44f5691572169e9e107ad) heruntergeladen werden. 
+* Die Wald-Daten kommen von Thüringen Forst und können [hier](http://www.geoproxy.geoportal-th.de/download-service/opendata/forst/WALDSCHAEDEN.zip) bezogen werden. [Hier](http://www.geoproxy.geoportal-th.de/geoclient/metadata.jsp?MURL=https%3A//sdi.geoportal-th.de/SDIProCSW/Service.svc/get%3FREQUEST%3DGetRecordById%26SERVICE%3DCSW%26VERSION%3D2.0.2%26Elementsetname%3Dfull%26outputSchema%3Dhttp%3A//www.isotc211.org/2005/gmd%26ID%3De2acab5e-325d-4c3d-b3ab-1938f697bf3a) können Metadaten eingesehen werden. 
 * Die Größen von Siedlungen kommen vom [Geoportal Thüringen](https://www.geoportal-th.de/de-de/Downloadbereiche/Download-Offene-Geodaten-Th%C3%BCringen)
+
+### Wovon wird die Hainleite beschädigt?
+
+Die Datenquelle vom Thüringen Forst erfasst alle Arten von Schäden, namentlich "Borkenkäfer bei Fichte und Lärche, Trockenschäden bei Buche, Eschentriebsterben, Diplodia-Pilzbefall bei Kiefer, Eichen-Frassschäden u.v.a.m" (aus der Datenbeschreibung). Welche genau auf die Hainleite zutreffen kann bei örtlichen Forst-ExpertInnen erfragt werden. 
 
 ### Wie kann ich das selbst machen? 
 
